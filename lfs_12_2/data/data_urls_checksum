@@ -1,0 +1,8 @@
+iana-etc https://github.com/Mic92/iana-etc/releases/download/20240806/iana-etc-20240806.tar.gz ea3c37c00d22f1159fc3b7d988de8476
+lfs-bootscripts https://www.linuxfromscratch.org/lfs/downloads/12.2/lfs-bootscripts-20240825.tar.xz 4dd8a52530eec8f8a544f833e2a82eaf
+man-pages https://www.kernel.org/pub/linux/docs/man-pages/man-pages-6.9.1.tar.xz 4d56775b6cce4edf1e496249e7c01c1a
+python-3.12.5-docs-html https://www.python.org/ftp/python/doc/3.12.5/python-3.12.5-docs-html.tar.bz2 52274d813236ca4a972fb6988480dc56
+systemd-man-pages-256.4.tar.xz https://anduin.linuxfromscratch.org/LFS/systemd-man-pages-256.4.tar.xz 8dbcf0ff0d8e5e9d3565f9d2fc153310
+tcl8.6.14-html https://downloads.sourceforge.net/tcl/tcl8.6.14-html.tar.gz 5467198f8d57c54835bf80b98ffb0170
+tzdata https://www.iana.org/time-zones/repository/releases/tzdata2024a.tar.gz 2349edd8335245525cc082f2755d5bf4
+udev-lfs https://anduin.linuxfromscratch.org/LFS/udev-lfs-20230818.tar.xz acd4360d8a5c3ef320b9db88d275dae6

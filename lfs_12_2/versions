@@ -1,0 +1,85 @@
+# Package git_tag version_name preparation_cmd
+acl v2.3.2 2.3.2 ./autogen.sh
+attr v2.5.2 2.5.2 ./autogen.sh
+autoconf v2.72 2.72 ./bootstrap
+automake v1.17 1.17 ./bootstrap
+bash bash-5.2 5.2
+bc 6.7.6 6.7.6
+binutils binutils-2_43_1 2.43.1
+bison v3.8.2 3.8.2 "./bootstrap || git submodule update --init && ./bootstrap"
+bzip2 bzip2-1.0.8 1.0.8
+check 0.15.2 0.15.2 "autoreconf -iv"
+coreutils v9.5 9.5 ./bootstrap
+dejagnu dejagnu-1.6.3-release 1.6.3 ./autogen.sh
+diffutils v3.10 3.10 ./bootstrap
+e2fsprogs v1.47.1 1.47.1
+elfutils elfutils-0.191 0.191 "autoreconf -ivf"
+expat R_2_6_2 2.6.2 "cd expat && ./buildconf.sh"
+file FILE5_45 5.45 "autoreconf -ivf"
+findutils v4.10.0 4.10.0 ./bootstrap
+flex v2.6.4 2.6.4 ./autogen.sh
+flit_core 3.9.0 3.9.0
+gawk gawk-5.3.0 5.3.0
+gcc releases/gcc-14.2.0 14.2.0
+gdbm v1.24 1.24 ./bootstrap
+gettext v0.22.5 0.22.5 "./gitsub.sh pull && ./autogen.sh"
+glibc glibc-2.40 2.40
+gperf v3.1 3.1 ./autogen.sh
+grep v3.11 3.11 ./bootstrap
+groff 1.23.0 1.23.0 ./bootstrap
+grub grub-2.12 2.12 ./bootstrap
+gzip v1.13 1.13 ./bootstrap
+#iana-etc https://github.com/Mic92/iana-etc.git  # Adapt this to use latest version
+inetutils v2.5 2.5 ./bootstrap
+# OR https://github.com/iproute2/iproute2.git
+iproute2 v6.10.0 6.10.0
+# TBT
+jinja2 3.1.4 3.1.4
+kbd v2.6.4 2.6.4 ./autogen.sh
+kmod v33 33 ./autogen.sh
+# OR https://www.greenwoodsoftware.com/less/less-661.tar.gz
+less v661 661 "make -f Makefile.aut distfiles"
+libcap libcap-2.70 2.70
+libffi v3.4.6 3.4.6 ./autogen.sh
+libpipeline 1.5.7 1.5.7 ./bootstrap
+libtool v2.4.7 2.4.7 ./bootstrap
+libxcrypt v4.4.36 4.4.36 ./autogen.sh
+linux v6.10 6.10
+lz4 v1.10.0 1.10.0
+m4 v1.4.19 1.4.19 ./bootstrap
+make 4.4.1 4.4.1 ./bootstrap
+man-db 2.12.1 2.12.1 ./bootstrap
+markupsafe 2.1.5 2.1.5
+meson 1.5.1 1.5.1
+mpc 1.3.1 1.3.1 "autoreconf -iv"
+mpfr 4.2.1 4.2.1 ./autogen.sh
+# OR https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz
+ncurses v6_5 6.5
+ninja v1.12.1 1.12.1
+openssl openssl-3.3.1 3.3.1
+patch v2.7.6 2.7.6 ./bootstrap
+perl v5.40.0 5.40.0
+pkgconf pkgconf-2.3.0 2.3.0 ./autogen.sh
+procps-ng v4.0.4 4.0.4 ./autogen.sh
+psmisc v23.7 23.7 ./autogen.sh
+python v3.12.5 3.12.5
+readline readline-8.2 8.2
+sed v4.9 4.9 ./bootstrap
+# TBT
+setuptools v72.2.0 72.2.0
+shadow 4.16.0 4.16.0 "autoreconf -v -f --install ."
+sysklogd v2.6.1 2.6.1 ./autogen.sh
+systemd v256.4 256.4
+sysvinit 3.10 3.10
+tar v1.35 1.35 ./bootstrap
+# Maybe https://github.com/tcltk/tcllib.git will also be required
+tcl core-8-6-14 8.6.14
+texinfo texinfo-7.1 7.1 ./autogen.sh
+util-linux v2.40.2 2.40.2 ./autogen.sh
+vim v9.1.0660 9.1.0660
+# TBT
+wheel 0.44.0 0.44.0
+#xml-parser https://github.com/chorny/XML-Parser.git  # no tag in the git repo :(
+xz v5.6.2 5.6.2 "./autogen.sh --no-po4a"
+zlib v1.3.1 1.3.1
+zstd v1.5.6 1.5.6

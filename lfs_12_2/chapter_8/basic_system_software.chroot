@@ -1,0 +1,2612 @@
+#!/bin/bash
+
+source /root/utils.sh
+
+DO_TESTS=
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--tests)
+      DO_TESTS="Y"
+      shift
+      ;;
+    -*|--*)
+      echo "Unknown argument $1"
+      exit 1
+      ;;
+  esac
+done
+
+#------------------------------------------------------------------------------
+# CHAPTER 8
+#------------------------------------------------------------------------------
+
+# The following command, run as root after an update is complete, will list
+# which processes are using the old versions of the updated libraries
+#grep -l 'libfoo.*deleted' /proc/*/maps | tr -cd 0-9\\n | xargs -r ps u
+
+#------------------------------------------------------------------------------
+# Man-pages-6.9.1
+#------------------------------------------------------------------------------
+
+install_man_pages() {
+
+extr_enter_pkg "man-pages"
+
+rm -v man3/crypt*
+make prefix=/usr install
+check_error "make man_pages"
+
+rm_pkg "man-pages"
+}
+
+#------------------------------------------------------------------------------
+# Iana-Etc-20240806 
+#------------------------------------------------------------------------------
+
+install_iana_etc() {
+
+extr_enter_pkg "iana-etc"
+
+cp services protocols /etc
+
+rm_pkg "iana-etc"
+}
+
+#------------------------------------------------------------------------------
+# Glibc-2.40
+#------------------------------------------------------------------------------
+#
+install_glibc() {
+
+extr_enter_pkg "glibc"
+
+patch -Np1 -i ../glibc-2.40-fhs-1.patch
+
+mkdir -v build
+cd build
+
+echo "rootsbindir=/usr/sbin" > configparms
+
+../configure --prefix=/usr \
+    --disable-werror \
+    --enable-kernel=4.19 \
+    --enable-stack-protector=strong \
+    --disable-nscd \
+    libc_cv_slibdir=/usr/lib
+
+check_error "configure glibc"
+
+make
+check_error "make glibc"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+    grep "Timed out" $(find -name \*.out)
+    #Example: TIMEOUTFACTOR=10 make test t=nss/tst-nss-files-hosts-multi
+fi
+
+touch /etc/ld.so.conf
+
+sed '/test-installation/s@$(PERL)@echo not running@' -i ../Makefile
+
+#cat /usr/include/ linux/version.h
+
+make install
+check_error "make install glibc"
+sed '/RTLDLIST=/s@/usr@@g' -i /usr/bin/ldd
+
+localedef -i C -f UTF-8 C.UTF-8
+localedef -i cs_CZ -f UTF-8 cs_CZ.UTF-8
+localedef -i de_DE -f ISO-8859-1 de_DE
+localedef -i de_DE@euro -f ISO-8859-15 de_DE@euro
+localedef -i de_DE -f UTF-8 de_DE.UTF-8
+localedef -i el_GR -f ISO-8859-7 el_GR
+localedef -i en_GB -f ISO-8859-1 en_GB
+localedef -i en_GB -f UTF-8 en_GB.UTF-8
+localedef -i en_HK -f ISO-8859-1 en_HK
+localedef -i en_PH -f ISO-8859-1 en_PH
+localedef -i en_US -f ISO-8859-1 en_US
+localedef -i en_US -f UTF-8 en_US.UTF-8
+localedef -i es_ES -f ISO-8859-15 es_ES@euro
+localedef -i es_MX -f ISO-8859-1 es_MX
+localedef -i fa_IR -f UTF-8 fa_IR
+localedef -i fr_FR -f ISO-8859-1 fr_FR
+localedef -i fr_FR@euro -f ISO-8859-15 fr_FR@euro
+localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
+localedef -i is_IS -f ISO-8859-1 is_IS
+localedef -i is_IS -f UTF-8 is_IS.UTF-8
+localedef -i it_IT -f ISO-8859-1 it_IT
+localedef -i it_IT -f ISO-8859-15 it_IT@euro
+localedef -i it_IT -f UTF-8 it_IT.UTF-8
+localedef -i ja_JP -f EUC-JP ja_JP
+localedef -i ja_JP -f SHIFT_JIS ja_JP.SJIS 2> /dev/null || true
+localedef -i ja_JP -f UTF-8 ja_JP.UTF-8
+localedef -i nl_NL@euro -f ISO-8859-15 nl_NL@euro
+localedef -i ru_RU -f KOI8-R ru_RU.KOI8-R
+localedef -i ru_RU -f UTF-8 ru_RU.UTF-8
+localedef -i se_NO -f UTF-8 se_NO.UTF-8
+localedef -i ta_IN -f UTF-8 ta_IN.UTF-8
+localedef -i tr_TR -f UTF-8 tr_TR.UTF-8
+localedef -i zh_CN -f GB18030 zh_CN.GB18030
+localedef -i zh_HK -f BIG5-HKSCS zh_HK.BIG5-HKSCS
+localedef -i zh_TW -f UTF-8 zh_TW.UTF-8
+
+#ALL LOCALES AT ONCE
+#make localedata/install-locales
+#localedef -i C -f UTF-8 C.UTF-8
+#localedef -i ja_JP -f SHIFT_JIS ja_JP.SJIS 2> /dev/null || true
+
+cat > /etc/nsswitch.conf << "EOF"
+# Begin /etc/nsswitch.conf
+
+passwd: files
+group: files
+shadow: files
+
+hosts: files dns
+networks: files
+
+protocols: files
+services: files
+ethers: files
+rpc: files
+
+# End /etc/nsswitch.conf
+EOF
+
+
+tar -xf ../../tzdata2024a.tar.gz
+
+ZONEINFO=/usr/share/zoneinfo
+mkdir -pv $ZONEINFO/{posix,right}
+
+for tz in etcetera southamerica northamerica europe africa antarctica \
+        asia australasia backward; do
+    zic -L /dev/null -d $ZONEINFO ${tz}
+    zic -L /dev/null -d $ZONEINFO/posix ${tz}
+    zic -L leapseconds -d $ZONEINFO/right ${tz}
+done
+
+cp -v zone.tab zone1970.tab iso3166.tab $ZONEINFO
+zic -d $ZONEINFO -p America/New_York
+unset ZONEINFO
+
+#tzselect
+
+ln -sfv /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+
+cat > /etc/ld.so.conf << "EOF"
+# Begin /etc/ld.so.conf
+/usr/local/lib
+/opt/lib
+
+EOF
+
+cat >> /etc/ld.so.conf << "EOF"
+# Add an include directory
+include /etc/ld.so.conf.d/*.conf
+
+EOF
+mkdir -pv /etc/ld.so.conf.d
+
+rm_pkg "glibc"
+}
+
+#------------------------------------------------------------------------------
+# Zlib-1.3.1
+#------------------------------------------------------------------------------
+
+install_zlib() {
+
+extr_enter_pkg "zlib"
+
+./configure --prefix=/usr
+check_error "configure zlib"
+make
+check_error "make zlib"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install zlib"
+rm -fv /usr/lib/libz.a
+
+rm_pkg "zlib"
+}
+
+#------------------------------------------------------------------------------
+# Bzip2-1.0.8
+#------------------------------------------------------------------------------
+
+install_bzip2() {
+
+extr_enter_pkg "bzip2"
+
+patch -Np1 -i ../bzip2-1.0.8-install_docs-1.patch
+
+sed -i 's@\(ln -s -f \)$(PREFIX)/bin/@\1@' Makefile
+
+sed -i "s@(PREFIX)/man@(PREFIX)/share/man@g" Makefile
+
+make -f Makefile-libbz2_so
+make clean
+
+make
+check_error "make bzip2"
+make PREFIX=/usr install
+check_error "make install bzip2"
+
+cp -av libbz2.so.* /usr/lib
+ln -sv libbz2.so.1.0.8 /usr/lib/libbz2.so
+
+cp -v bzip2-shared /usr/bin/bzip2
+for i in /usr/bin/{bzcat,bunzip2}; do
+    ln -sfv bzip2 $i
+done
+
+rm -fv /usr/lib/libbz2.a 
+
+rm_pkg "bzip2"
+}
+
+#------------------------------------------------------------------------------
+# Xz-5.6.2
+#------------------------------------------------------------------------------
+
+install_xz() {
+
+extr_enter_pkg "xz"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/xz-5.6.2
+
+check_error "configure xz"
+
+make
+check_error "make xz"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install xz"
+
+rm_pkg "xz"
+}
+
+#------------------------------------------------------------------------------
+# Lz4-1.10.0 
+#------------------------------------------------------------------------------
+
+install_lz4() {
+
+extr_enter_pkg "lz4"
+
+make BUILD_STATIC=no PREFIX=/usr
+check_error "make lz4"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make -j1 check
+fi
+
+make BUILD_STATIC=no PREFIX=/usr install 
+check_error "make install lz4"
+
+rm_pkg "lz4"
+}
+
+#------------------------------------------------------------------------------
+# Zstd-1.5.6
+#------------------------------------------------------------------------------
+
+install_zstd() {
+
+extr_enter_pkg "zstd"
+
+make prefix=/usr
+check_error "make zstd"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make prefix=/usr install 
+check_error "make install zstd"
+
+rm -v /usr/lib/libzstd.a
+
+rm_pkg "zstd"
+}
+
+#------------------------------------------------------------------------------
+# File-5.45
+#------------------------------------------------------------------------------
+
+install_file() {
+
+extr_enter_pkg "file"
+
+./configure --prefix=/usr
+check_error "configure file"
+
+make
+check_error "make file"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install file"
+
+rm_pkg "file"
+}
+
+#------------------------------------------------------------------------------
+# Readline-8.2
+#------------------------------------------------------------------------------
+
+install_readline() {
+
+extr_enter_pkg "readline"
+
+sed -i '/MV.*old/d' Makefile.in
+sed -i '/{OLDSUFF}/c:' support/shlib-install
+
+sed -i 's/-Wl,-rpath,[^ ]*//' support/shobj-conf
+
+./configure --prefix=/usr \
+    --disable-static \
+    --with-curses \
+    --docdir=/usr/share/doc/readline-8.2
+
+check_error "configure readline"
+
+make SHLIB_LIBS="-lncursesw"
+check_error "make readline"
+make SHLIB_LIBS="-lncursesw" install
+check_error "make install readline"
+install -v -m644 doc/*.{ps,pdf,html,dvi} /usr/share/doc/readline-8.2
+
+rm_pkg "readline"
+}
+
+#------------------------------------------------------------------------------
+# M4-1.4.19
+#------------------------------------------------------------------------------
+
+install_m4() {
+
+extr_enter_pkg "m4"
+
+./configure --prefix=/usr
+check_error "configure m4"
+make
+check_error "make m4"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install m4"
+
+rm_pkg "m4"
+}
+
+#------------------------------------------------------------------------------
+# Bc-6.7.6
+#------------------------------------------------------------------------------
+
+install_bc() {
+
+extr_enter_pkg "bc"
+
+CC=gcc ./configure --prefix=/usr -G -O3 -r
+check_error "configure bc"
+
+make
+check_error "make bc"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test
+fi
+
+make install
+check_error "make install bc"
+
+rm_pkg "bc"
+}
+
+#------------------------------------------------------------------------------
+# Flex-2.6.4
+#------------------------------------------------------------------------------
+
+install_flex() {
+
+extr_enter_pkg "flex"
+
+./configure --prefix=/usr \
+    --docdir=/usr/share/doc/flex-2.6.4 \
+    --disable-static
+
+check_error "configure flex"
+
+make
+check_error "make flex"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install flex"
+
+ln -sv flex /usr/bin/lex
+ln -sv flex.1 /usr/share/man/man1/lex.1 
+
+rm_pkg "flex"
+}
+
+#------------------------------------------------------------------------------
+# Tcl-8.6.14
+#------------------------------------------------------------------------------
+
+install_tcl() {
+
+extr_enter_pkg "tcl"
+
+SRCDIR=$(pwd)
+cd unix
+./configure --prefix=/usr \
+    --mandir=/usr/share/man \
+    --disable-rpath
+
+check_error "configure tcl"
+
+make
+check_error "make tcl"
+
+sed -e "s|$SRCDIR/unix|/usr/lib|" \
+       -e "s|$SRCDIR|/usr/include|" \
+       -i tclConfig.sh
+
+sed -e "s|$SRCDIR/unix/pkgs/tdbc1.1.7|/usr/lib/tdbc1.1.7|" \
+       -e "s|$SRCDIR/pkgs/tdbc1.1.7/generic|/usr/include|" \
+       -e "s|$SRCDIR/pkgs/tdbc1.1.7/library|/usr/lib/tcl8.6|" \
+       -e "s|$SRCDIR/pkgs/tdbc1.1.7|/usr/include|" \
+       -i pkgs/tdbc1.1.7/tdbcConfig.sh
+
+sed -e "s|$SRCDIR/unix/pkgs/itcl4.2.4|/usr/lib/itcl4.2.4|" \
+       -e "s|$SRCDIR/pkgs/itcl4.2.4/generic|/usr/include|" \
+       -e "s|$SRCDIR/pkgs/itcl4.2.4|/usr/include|" \
+       -i pkgs/itcl4.2.4/itclConfig.sh
+
+unset SRCDIR
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test
+fi
+
+make install
+check_error "make install tcl"
+
+chmod -v u+w /usr/lib/libtcl8.6.so
+make install-private-headers
+ln -sfv tclsh8.6 /usr/bin/tclsh
+mv /usr/share/man/man3/{Thread,Tcl_Thread}.3
+
+cd ..
+tar -xf ../tcl8.6.14-html.tar.gz --strip-components=1
+mkdir -v -p /usr/share/doc/tcl-8.6.14
+cp -v -r ./html/* /usr/share/doc/tcl-8.6.14 
+
+rm_pkg "tcl"
+}
+
+#------------------------------------------------------------------------------
+# Expect-5.45.4
+#------------------------------------------------------------------------------
+
+install_expect() {
+
+extr_enter_pkg "expect"
+
+python3 -c 'from pty import spawn; spawn(["echo", "ok"])'
+
+patch -Np1 -i ../expect-5.45.4-gcc14-1.patch
+
+./configure --prefix=/usr \
+    --with-tcl=/usr/lib \
+    --enable-shared \
+    --disable-rpath \
+    --mandir=/usr/share/man \
+    --with-tclinclude=/usr/include
+
+check_error "configure rxpect"
+
+make
+check_error "make expect"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test
+fi
+
+make install
+check_error "make install expect"
+ln -svf expect5.45.4/libexpect5.45.4.so /usr/lib
+
+rm_pkg "expect"
+}
+
+#------------------------------------------------------------------------------
+# DejaGNU-1.6.3
+#------------------------------------------------------------------------------
+
+install_dejagnu() {
+
+extr_enter_pkg "dejagnu"
+
+mkdir -v build && cd build
+
+../configure --prefix=/usr
+check_error "configure dejagnu"
+makeinfo --html --no-split -o doc/dejagnu.html ../doc/dejagnu.texi
+makeinfo --plaintext -o doc/dejagnu.txt ../doc/dejagnu.texi
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install dejagnu"
+install -v -dm755 /usr/share/doc/dejagnu-1.6.3
+install -v -m644 doc/dejagnu.{html,txt} /usr/share/doc/dejagnu-1.6.3
+
+rm_pkg "dejagnu"
+}
+
+#------------------------------------------------------------------------------
+# Pkgconf-2.3.0
+#------------------------------------------------------------------------------
+
+install_pkgconf() {
+
+extr_enter_pkg "pkgconf"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/pkgconf-2.3.0
+
+check_error "configure pkgconf"
+make
+check_error "make pkgconf"
+make install
+check_error "make iinstall pkgconf"
+
+ln -sv pkgconf /usr/bin/pkg-config
+ln -sv pkgconf.1 /usr/share/man/man1/pkg-config.1 
+
+rm_pkg "pkgconf"
+}
+
+#------------------------------------------------------------------------------
+# Binutils-2.43.1 
+#------------------------------------------------------------------------------
+
+install_binutils() {
+
+extr_enter_pkg "binutils"
+
+#rm -r gdb* libbacktrace libdecnumber contrib djunpack.bat COPYING.LIBGLOSS \
+#        COPYING.NEWLIB gnulib readline || true
+
+mkdir -v build && cd build
+
+../configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-gold \
+    --enable-ld=default \
+    --enable-plugins \
+    --enable-shared \
+    --disable-werror \
+    --enable-64-bit-bfd \
+    --enable-new-dtags \
+    --with-system-zlib \
+    --enable-default-hash-style=gnu 
+
+check_error "configure binutils"
+make tooldir=/usr
+check_error "make binutils"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make -k check
+    grep '^FAIL:' $(find -name '*.log')
+fi
+
+make tooldir=/usr install
+check_error "make install binutils"
+
+rm -fv /usr/lib/lib{bfd,ctf,ctf-nobfd,gprofng,opcodes,sframe}.a
+
+rm_pkg "binutils"
+}
+
+#------------------------------------------------------------------------------
+# GMP-6.3.0
+#------------------------------------------------------------------------------
+
+install_gmp() {
+
+extr_enter_pkg "gmp"
+
+./configure --prefix=/usr \
+    --enable-cxx \
+    --disable-static \
+    --docdir=/usr/share/doc/gmp-6.3.0
+
+check_error "configure gmp"
+make
+check_error "make gmp"
+make html
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check 2>&1 | tee gmp-check-log
+    awk '/# PASS:/{total+=$3} ; END{print total}' gmp-check-log
+fi
+
+make install
+check_error "make install gmp"
+make install-html
+
+rm_pkg "gmp"
+}
+
+#------------------------------------------------------------------------------
+# MPFR-4.2.1
+#------------------------------------------------------------------------------
+
+install_mpfr() {
+
+extr_enter_pkg "mpfr"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --enable-thread-safe \
+    --docdir=/usr/share/doc/mpfr-4.2.1
+
+check_error "configure mpfr"
+make
+check_error "make mpfr"
+make html
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install mpfr"
+make install-html
+
+rm_pkg "mpfr"
+}
+
+#------------------------------------------------------------------------------
+# MPC-1.3.1 
+#------------------------------------------------------------------------------
+
+install_mpc() {
+
+extr_enter_pkg "mpc"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/mpc-1.3.1
+
+check_error "configure mpc"
+make
+check_error "make mpc"
+make html
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install mpc"
+make install-html
+
+rm_pkg "mpc"
+}
+
+#------------------------------------------------------------------------------
+# Attr-2.5.2
+#------------------------------------------------------------------------------
+
+install_attr() {
+
+extr_enter_pkg "attr"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --sysconfdir=/etc \
+    --docdir=/usr/share/doc/attr-2.5.2
+
+check_error "configure attr"
+make
+check_error "make attr"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install attr"
+
+rm_pkg "attr"
+}
+
+#------------------------------------------------------------------------------
+# Acl-2.3.2 
+#------------------------------------------------------------------------------
+
+install_acl() {
+
+extr_enter_pkg "acl"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/acl-2.3.2
+
+check_error "configure acl"
+make
+check_error "make acl"
+#make check # only after Coreutils has been built
+make install
+check_error "make install acl"
+
+#rm_pkg "acl"
+}
+
+#------------------------------------------------------------------------------
+# Libcap-2.70
+#------------------------------------------------------------------------------
+
+install_libcap() {
+
+extr_enter_pkg "libcap"
+
+sed -i '/install -m.*STA/d' libcap/Makefile
+
+make prefix=/usr lib=lib 
+check_error "make libcap"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test
+fi
+
+make prefix=/usr lib=lib install
+check_error "make install libcap"
+
+rm_pkg "libcap"
+}
+
+#------------------------------------------------------------------------------
+# Libxcrypt-4.4.36
+#------------------------------------------------------------------------------
+
+install_libxcrypt() {
+
+extr_enter_pkg "libxcrypt"
+
+./configure --prefix=/usr \
+    --enable-hashes=strong,glibc \
+    --enable-obsolete-api=no \
+    --disable-static \
+    --disable-failure-tokens
+
+check_error "configure libxcrypt"
+make
+check_error "make libxcrypt"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install libxcrypt"
+
+rm_pkg "libxcrypt"
+}
+
+#------------------------------------------------------------------------------
+# Shadow-4.16.0
+#------------------------------------------------------------------------------
+
+install_shadow() {
+
+extr_enter_pkg "shadow"
+
+sed -i 's/groups$(EXEEXT) //' src/Makefile.in
+find man -name Makefile.in -exec sed -i 's/groups\.1 / /' {} \;
+find man -name Makefile.in -exec sed -i 's/getspnam\.3 / /' {} \; 
+find man -name Makefile.in -exec sed -i 's/passwd\.5 / /' {} \;
+
+sed -e 's:#ENCRYPT_METHOD DES:ENCRYPT_METHOD YESCRYPT:' \
+       -e 's:/var/spool/mail:/var/mail:' \
+       -e '/PATH=/{s@/sbin:@@;s@/bin:@@}' \
+       -i etc/login.defs
+
+touch /usr/bin/passwd
+./configure --sysconfdir=/etc \
+    --disable-static \
+    --with-{b,yes}crypt \
+    --without-libbsd \
+    --with-group-name-max-length=32 
+
+check_error "configure shadow"
+make
+check_error "make shadow"
+
+make exec_prefix=/usr install
+check_error "make install shadow"
+make -C man install-man
+
+pwconv
+grpconv
+
+mkdir -p /etc/default
+useradd -D --gid 999
+
+# If you would rather not create a mailbox file for each new user
+#sed -i '/MAIL/s/yes/no/' /etc/default/useradd
+
+echo "root" | passwd --stdin root
+
+rm_pkg "shadow"
+}
+
+#------------------------------------------------------------------------------
+# GCC-14.2.0
+#------------------------------------------------------------------------------
+
+install_gcc() {
+
+extr_enter_pkg "gcc"
+
+case $(uname -m) in
+    x86_64)
+        sed -e '/m64=/s/lib64/lib/' \
+            -i.orig gcc/config/i386/t-linux64
+    ;;
+esac
+
+mkdir -v build && cd build
+
+../configure --prefix=/usr \
+    LD=ld \
+    --enable-languages=c,c++ \
+    --enable-default-pie \
+    --enable-default-ssp \
+    --enable-host-pie \
+    --disable-multilib \
+    --disable-bootstrap \
+    --disable-fixincludes \
+    --with-system-zlib
+
+check_error "configure gcc"
+make
+check_error "make gcc"
+
+ulimit -s -H unlimited
+
+sed -e '/cpython/d' -i ../gcc/testsuite/gcc.dg/plugin/plugin.exp
+sed -e 's/no-pic /&-no-pie /' -i ../gcc/testsuite/gcc.target/i386/pr113689-1.c
+sed -e 's/300000/(1|300000)/' -i ../libgomp/testsuite/libgomp.c-c++-common/pr109062.c 
+sed -e 's/{ target nonpic } //' \
+    -e '/GOTPCREL/d' -i ../gcc/testsuite/gcc.target/i386/fentryname3.c
+
+chown -R tester . 
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make -k check"
+    ../contrib/test_summary
+fi
+
+make install
+check_error "make install gcc"
+
+chown -v -R root:root \
+    /usr/lib/gcc/$(gcc -dumpmachine)/14.2.0/include{,-fixed}
+
+ln -svr /usr/bin/cpp /usr/lib
+
+ln -sv gcc.1 /usr/share/man/man1/cc.1 
+
+ln -sfv ../../libexec/gcc/$(gcc -dumpmachine)/14.2.0/liblto_plugin.so \
+    /usr/lib/bfd-plugins/
+
+echo 'int main(){}' > dummy.c
+cc dummy.c -v -Wl,--verbose &> dummy.log
+readelf -l a.out | grep ': /lib'
+
+grep -E -o '/usr/lib.*/S?crt[1in].*succeeded' dummy.log 
+grep -B4 '^ /usr/include' dummy.log
+grep 'SEARCH.*/usr/lib' dummy.log |sed 's|; |\n|g' 
+grep "/lib.*/libc.so.6 " dummy.log 
+grep found dummy.log
+
+rm -v dummy.c a.out dummy.log
+
+mkdir -pv /usr/share/gdb/auto-load/usr/lib
+mv -v /usr/lib/*gdb.py /usr/share/gdb/auto-load/usr/lib
+
+rm_pkg "gcc"
+}
+
+#------------------------------------------------------------------------------
+# Ncurses-6.5
+#------------------------------------------------------------------------------
+
+install_ncurses() {
+
+extr_enter_pkg "ncurses"
+
+./configure --prefix=/usr \
+    --mandir=/usr/share/man \
+    --with-shared \
+    --without-debug \
+    --without-normal \
+    --with-cxx-shared \
+    --enable-pc-files \
+    --with-pkg-config-libdir=/usr/lib/pkgconfig
+
+check_error "configure ncurses"
+make
+check_error "make ncurses"
+
+make DESTDIR=$PWD/dest install
+check_error "make install ncurses"
+install -vm755 dest/usr/lib/libncursesw.so.6.5 /usr/lib
+rm -v dest/usr/lib/libncursesw.so.6.5
+sed -e 's/^#if.*XOPEN.*$/#if 1/' \
+    -i dest/usr/include/curses.h
+cp -av dest/* /
+
+for lib in ncurses form panel menu ; do
+    ln -sfv lib${lib}w.so /usr/lib/lib${lib}.so
+    ln -sfv ${lib}w.pc /usr/lib/pkgconfig/${lib}.pc
+done
+
+ln -sfv libncursesw.so /usr/lib/libcurses.so
+
+cp -v -R doc -T /usr/share/doc/ncurses-6.5
+
+rm_pkg "ncurses"
+}
+
+#------------------------------------------------------------------------------
+# Sed-4.9
+#------------------------------------------------------------------------------
+
+install_sed() {
+
+extr_enter_pkg "sed"
+
+./configure --prefix=/usr
+
+check_error "configure sed"
+make
+check_error "make sed"
+make html
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make check"
+fi
+
+make install
+check_error "make install sed"
+install -d -m755 /usr/share/doc/sed-4.9
+install -m644 doc/sed.html /usr/share/doc/sed-4.9
+
+rm_pkg "sed"
+}
+
+#------------------------------------------------------------------------------
+# Psmisc-23.7
+#------------------------------------------------------------------------------
+
+install_psmisc() {
+
+extr_enter_pkg "psmisc"
+
+./configure --prefix=/usr
+check_error "configure psmisc"
+make
+check_error "make psmisc"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install psmisc"
+
+rm_pkg "psmisc"
+}
+
+#------------------------------------------------------------------------------
+# Gettext-0.22.5 
+#------------------------------------------------------------------------------
+
+install_gettext() {
+
+extr_enter_pkg "gettext"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/gettext-0.22.5
+
+check_error "configure gettext"
+make
+check_error "make gettext"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install gettext"
+chmod -v 0755 /usr/lib/preloadable_libintl.so
+
+rm_pkg "gettext"
+}
+
+#------------------------------------------------------------------------------
+# Bison-3.8.2
+#------------------------------------------------------------------------------
+
+install_bison() {
+
+extr_enter_pkg "bison"
+
+./configure --prefix=/usr --docdir=/usr/share/doc/bison-3.8.2
+check_error "configure bison"
+
+make
+check_error "make bison"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install bison"
+
+rm_pkg "bison"
+}
+
+#------------------------------------------------------------------------------
+# Grep-3.11
+#------------------------------------------------------------------------------
+
+install_grep() {
+
+extr_enter_pkg "grep"
+
+sed -i "s/echo/#echo/" src/egrep.sh
+
+./configure --prefix=/usr
+check_error "configure grep"
+
+make
+check_error "make grep"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install grep"
+
+rm_pkg "grep"
+}
+
+#------------------------------------------------------------------------------
+# Bash-5.2
+#------------------------------------------------------------------------------
+
+install_bash() {
+
+extr_enter_pkg "bash"
+
+./configure --prefix=/usr \
+     --without-bash-malloc \
+     --with-installed-readline \
+     bash_cv_strtold_broken=no \
+     --docdir=/usr/share/doc/bash-5.2
+
+check_error "configure bash"
+make
+check_error "make bash"
+
+chown -R tester . 
+
+if [ "${DO_TESTS}" == "Y" ]; then
+su -s /usr/bin/expect tester << "EOF"
+set timeout -1
+spawn make tests
+expect eof
+lassign [wait] _ _ _ value
+exit $value
+EOF
+fi
+
+make install
+check_error "make install bash"
+
+#exec /usr/bin/bash --login
+
+rm_pkg "bash"
+}
+
+#------------------------------------------------------------------------------
+# Libtool-2.4.7
+#------------------------------------------------------------------------------
+
+install_libtool() {
+
+extr_enter_pkg "libtool"
+
+./configure --prefix=/usr
+check_error "configure libtool"
+
+make
+check_error "make libtool"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make -k check
+fi
+
+make install
+check_error "make install libtool"
+
+rm -fv /usr/lib/libltdl.a
+
+rm_pkg "libtool"
+}
+
+#------------------------------------------------------------------------------
+# GDBM-1.24
+#------------------------------------------------------------------------------
+
+install_gdbm() {
+
+extr_enter_pkg "gdbm"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --enable-libgdbm-compat
+
+check_error "configure gdbm"
+make
+check_error "make gdbm"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install gdbm"
+
+rm_pkg "gdbm"
+}
+
+#------------------------------------------------------------------------------
+# Gperf-3.1 
+#------------------------------------------------------------------------------
+
+install_gperf() {
+
+extr_enter_pkg "gperf"
+
+./configure --prefix=/usr --docdir=/usr/share/doc/gperf-3.1
+check_error "configure gperf"
+
+make
+check_error "make gperf"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make -j1 check
+fi
+
+make install
+check_error "make install gperf"
+
+rm_pkg "gperf"
+}
+
+#------------------------------------------------------------------------------
+# Expat-2.6.2 
+#------------------------------------------------------------------------------
+
+install_expat() {
+
+extr_enter_pkg "expat"
+
+cd expat
+
+./configure --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/expat-2.6.2
+
+check_error "configure expat"
+make
+check_error "make expat"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install expat"
+
+install -v -m644 doc/*.{html,css} /usr/share/doc/expat-2.6.2
+
+rm_pkg "expat"
+}
+
+#------------------------------------------------------------------------------
+# Inetutils-2.5 
+#------------------------------------------------------------------------------
+
+install_inetutils() {
+
+extr_enter_pkg "inetutils"
+
+sed -i 's/def HAVE_TERMCAP_TGETENT/ 1/' telnet/telnet.c
+
+./configure --prefix=/usr \
+    --bindir=/usr/bin \
+    --localstatedir=/var \
+    --disable-logger \
+    --disable-whois \
+    --disable-rcp \
+    --disable-rexec \
+    --disable-rlogin \
+    --disable-rsh \
+    --disable-servers 
+
+check_error "configure inetutils"
+make
+check_error "make inetutils"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install inetutils"
+
+mv -v /usr/{,s}bin/ifconfig
+
+rm_pkg "inetutils"
+}
+
+#------------------------------------------------------------------------------
+# Less-661 
+#------------------------------------------------------------------------------
+
+install_less() {
+
+extr_enter_pkg "less"
+
+./configure --prefix=/usr --sysconfdir=/etc
+check_error "configure less"
+
+make
+check_error "make less"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install less"
+
+rm_pkg "less"
+}
+
+#------------------------------------------------------------------------------
+# Perl-5.40.0
+#------------------------------------------------------------------------------
+
+install_perl() {
+
+extr_enter_pkg "perl"
+
+export BUILD_ZLIB=False
+export BUILD_BZIP2=0
+
+sh Configure -des \
+    -D prefix=/usr \
+    -D vendorprefix=/usr \
+    -D privlib=/usr/lib/perl5/5.40/core_perl \
+    -D archlib=/usr/lib/perl5/5.40/core_perl \
+    -D sitelib=/usr/lib/perl5/5.40/site_perl \
+    -D sitearch=/usr/lib/perl5/5.40/site_perl \
+    -D vendorlib=/usr/lib/perl5/5.40/vendor_perl \
+    -D vendorarch=/usr/lib/perl5/5.40/vendor_perl \
+    -D man1dir=/usr/share/man/man1 \
+    -D man3dir=/usr/share/man/man3 \
+    -D pager="/usr/bin/less -isR" \
+    -D useshrplib \
+    -D usethreads
+
+check_error "sh Configure perl"
+make
+check_error "make less"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    TEST_JOBS=$(nproc) make test_harness
+fi
+
+make install
+check_error "make install perl"
+
+unset BUILD_ZLIB BUILD_BZIP2
+
+rm_pkg "perl"
+}
+
+#------------------------------------------------------------------------------
+# XML::Parser-2.47
+#------------------------------------------------------------------------------
+
+install_xml_parser() {
+
+extr_enter_pkg "XML-Parser"
+
+perl Makefile.PL
+check_error "perl XML-Parser"
+
+make
+check_error "make XML-Parser"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test
+fi
+
+make install
+check_error "make install XML-Parser"
+
+rm_pkg "XML-Parser"
+}
+
+#------------------------------------------------------------------------------
+# Intltool-0.51.0
+#------------------------------------------------------------------------------
+
+install_intltool() {
+
+extr_enter_pkg "intltool"
+
+sed -i 's:\\\${:\\\$\\{:' intltool-update.in 
+
+./configure --prefix=/usr
+check_error "configure intltool"
+make
+check_error "make intltool"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install intltool"
+install -v -Dm644 doc/I18N-HOWTO /usr/share/doc/intltool-0.51.0/I18N-HOWTO
+
+rm_pkg "intltool"
+}
+
+#------------------------------------------------------------------------------
+# Autoconf-2.72
+#------------------------------------------------------------------------------
+
+install_autoconf() {
+
+extr_enter_pkg "autoconf"
+
+./configure --prefix=/usr
+check_error "configure autoconf"
+
+make
+check_error "make autoconf"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install autoconf"
+
+rm_pkg "autoconf"
+}
+
+#------------------------------------------------------------------------------
+# Automake-1.17
+#------------------------------------------------------------------------------
+
+install_automake() {
+
+extr_enter_pkg "automake"
+
+./configure --prefix=/usr --docdir=/usr/share/doc/automake-1.17 
+check_error "configure automake"
+
+make
+check_error "make automake"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make -j$(($(nproc)>4?$(nproc):4)) check  # a lot of time
+fi
+
+make install
+check_error "make install automake"
+
+rm_pkg "automake"
+}
+
+#------------------------------------------------------------------------------
+# OpenSSL-3.3.1 
+#------------------------------------------------------------------------------
+
+install_openssl() {
+
+extr_enter_pkg "openssl"
+
+./config --prefix=/usr \
+    --openssldir=/etc/ssl \
+    --libdir=lib \
+    shared \
+    zlib-dynamic
+
+check_error "configure openssl"
+make
+check_error "make openssl"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    HARNESS_JOBS=$(nproc) make test
+fi
+
+sed -i '/INSTALL_LIBS/s/libcrypto.a libssl.a//' Makefile
+make MANSUFFIX=ssl install
+check_error "make install openssl"
+
+mv -v /usr/share/doc/openssl /usr/share/doc/openssl-3.3.1 
+
+cp -vfr doc/* /usr/share/doc/openssl-3.3.1
+
+rm_pkg "openssl"
+}
+
+#------------------------------------------------------------------------------
+# Kmod-33
+#------------------------------------------------------------------------------
+
+install_kmod() {
+
+extr_enter_pkg "kmod"
+
+./configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --with-openssl \
+    --with-xz \
+    --with-zstd \
+    --with-zlib \
+    --disable-manpages
+
+check_error "configure kmod"
+make
+check_error "make kmod"
+make install
+check_error "make install kmod"
+
+for target in depmod insmod modinfo modprobe rmmod; do
+    ln -sfv ../bin/kmod /usr/sbin/$target
+    rm -fv /usr/bin/$target
+done
+
+rm_pkg "kmod"
+}
+
+#------------------------------------------------------------------------------
+# Elfutils-0.191
+#------------------------------------------------------------------------------
+
+install_libelf() {
+
+extr_enter_pkg "elfutils"
+
+./configure --prefix=/usr \
+    --disable-debuginfod \
+    --enable-libdebuginfod=dummy
+
+check_error "configure elfutils"
+make
+check_error "make elfutils"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make -C libelf install
+check_error "make install elfutils"
+install -vm644 config/libelf.pc /usr/lib/pkgconfig
+rm /usr/lib/libelf.a
+
+rm_pkg "elfutils"
+}
+
+#------------------------------------------------------------------------------
+# Libffi-3.4.6
+#------------------------------------------------------------------------------
+
+install_libffi() {
+
+extr_enter_pkg "libffi"
+
+./configure --prefix=/usr \
+    --disable-static \
+    --with-gcc-arch=native
+
+check_error "configure libffi"
+make
+check_error "make libffi"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install libffi"
+
+rm_pkg "libffi"
+}
+
+#------------------------------------------------------------------------------
+# Python-3.12.5
+#------------------------------------------------------------------------------
+
+install_python() {
+
+extr_enter_pkg "Python"
+
+./configure --prefix=/usr \
+    --enable-shared \
+    --with-system-expat \
+    --enable-optimizations 
+
+check_error "configure python"
+make
+check_error "make python"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make test TESTOPTS="--timeout 120"
+fi
+
+make install
+check_error "make install python"
+
+cat > /etc/pip.conf << EOF
+[global]
+root-user-action = ignore
+disable-pip-version-check = true
+EOF
+
+install -v -dm755 /usr/share/doc/python-3.12.5/html
+
+tar --no-same-owner \
+    -xvf ../python-3.12.5-docs-html.tar.bz2
+cp -R --no-preserve=mode python-3.12.5-docs-html/* \
+    /usr/share/doc/python-3.12.5/html
+
+rm_pkg "Python"
+}
+
+#------------------------------------------------------------------------------
+# Flit-Core-3.9.0
+#------------------------------------------------------------------------------
+
+install_flit_core() {
+
+extr_enter_pkg "flit_core"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD
+check_error "pip wheel flit_core"
+pip3 install --no-index --no-user --find-links dist flit_core
+check_error "pip install flit_core"
+
+rm_pkg "flit_core"
+}
+
+#------------------------------------------------------------------------------
+# Wheel-0.44.0 
+#------------------------------------------------------------------------------
+
+install_wheel() {
+
+extr_enter_pkg "wheel"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD 
+check_error "pip wheel wheel"
+pip3 install --no-index --find-links=dist wheel
+check_error "pip install wheel"
+
+rm_pkg "wheel"
+}
+
+#------------------------------------------------------------------------------
+# Setuptools-72.2.0
+#------------------------------------------------------------------------------
+
+install_setuptools() {
+
+extr_enter_pkg "setuptools"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD
+check_error "pip wheel setuptools"
+pip3 install --no-index --find-links dist setuptools
+check_error "pip install setuptools"
+
+rm_pkg "setuptools"
+}
+
+#------------------------------------------------------------------------------
+# Ninja-1.12.1 
+#------------------------------------------------------------------------------
+
+install_ninja() {
+
+extr_enter_pkg "ninja"
+
+export NINJAJOBS=4
+
+sed -i '/int Guess/a \
+    int j = 0;\
+    char* jobs = getenv( "NINJAJOBS" );\
+    if ( jobs != NULL ) j = atoi( jobs );\
+    if ( j > 0 ) return j;\
+' src/ninja.cc
+
+python3 configure.py --bootstrap
+check_error "python configure ninja"
+
+install -vm755 ninja /usr/bin/
+install -vDm644 misc/bash-completion /usr/share/bash-completion/completions/ninja
+install -vDm644 misc/zsh-completion /usr/share/zsh/site-functions/_ninja
+
+rm_pkg "ninja"
+}
+
+#------------------------------------------------------------------------------
+# Meson-1.5.1 
+#------------------------------------------------------------------------------
+
+install_meson() {
+
+extr_enter_pkg "meson"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD 
+check_error "pip wheel meson"
+
+pip3 install --no-index --find-links dist meson
+check_error "pip install meson"
+install -vDm644 data/shell-completions/bash/meson /usr/share/bash-completion/completions/meson
+install -vDm644 data/shell-completions/zsh/_meson /usr/share/zsh/site-functions/_meson
+
+rm_pkg "meson"
+}
+
+#------------------------------------------------------------------------------
+# Coreutils-9.5
+#------------------------------------------------------------------------------
+
+install_coreutils() {
+
+extr_enter_pkg "coreutils"
+
+patch -Np1 -i ../coreutils-9.5-i18n-2.patch
+
+autoreconf -fiv
+FORCE_UNSAFE_CONFIGURE=1 ./configure \
+    --prefix=/usr \
+    --enable-no-install-program=kill,uptime
+
+check_error "configure coreutils"
+make
+check_error "make coreutils"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make NON_ROOT_USERNAME=tester check-root
+
+    groupadd -g 102 dummy -U tester
+fi
+
+chown -R tester .
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make -k RUN_EXPENSIVE_TESTS=yes check" \
+        < /dev/null
+
+    groupdel dummy
+fi
+
+make install
+check_error "make install coreutils"
+
+mv -v /usr/bin/chroot /usr/sbin
+mv -v /usr/share/man/man1/chroot.1 /usr/share/man/man8/chroot.8
+sed -i 's/"1"/"8"/' /usr/share/man/man8/chroot.8
+
+rm_pkg "coreutils"
+
+# Test Acl package
+if [ "${DO_TESTS}" == "Y" ]; then
+    cd /sources/acl-2.3.2
+    make test
+fi
+
+rm_pkg "acl"
+}
+
+#------------------------------------------------------------------------------
+# Check-0.15.2 
+#------------------------------------------------------------------------------
+
+install_check() {
+
+extr_enter_pkg "check"
+
+./configure --prefix=/usr --disable-static
+check_error "configure check"
+
+make
+check_error "make check"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make docdir=/usr/share/doc/check-0.15.2 install
+check_error "make install check"
+
+rm_pkg "check"
+}
+
+#------------------------------------------------------------------------------
+# Diffutils-3.10
+#------------------------------------------------------------------------------
+
+install_diffutils() {
+
+extr_enter_pkg "diffutils"
+
+./configure --prefix=/usr
+check_error "configure diffutils"
+
+make
+check_error "make diffutils"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install diffutils"
+
+rm_pkg "diffutils"
+}
+
+#------------------------------------------------------------------------------
+# Gawk-5.3.0
+#------------------------------------------------------------------------------
+
+install_gawk() {
+
+extr_enter_pkg "gawk"
+
+sed -i 's/extras//' Makefile.in
+
+./configure --prefix=/usr
+check_error "configure gawk"
+
+make
+check_error "make gawk"
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make check"
+fi
+
+rm -f /usr/bin/gawk-5.3.0
+make install
+check_error "make install gawk"
+
+ln -sv gawk.1 /usr/share/man/man1/awk.1
+
+mkdir -pv /usr/share/doc/gawk-5.3.0
+cp -v doc/{awkforai.txt,*.{eps,pdf,jpg}} /usr/share/doc/gawk-5.3.0
+
+rm_pkg "gawk"
+}
+
+#------------------------------------------------------------------------------
+# Findutils-4.10.0
+#------------------------------------------------------------------------------
+
+install_findutils() {
+
+extr_enter_pkg "findutils"
+
+./configure --prefix=/usr --localstatedir=/var/lib/locate 
+check_error "configure findutils"
+
+make
+check_error "make findutils"
+
+chown -R tester . 
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make check"
+fi
+
+make install
+check_error "make install findutils"
+
+rm_pkg "findutils"
+}
+
+#------------------------------------------------------------------------------
+# Groff-1.23.0
+#------------------------------------------------------------------------------
+
+install_groff() {
+
+extr_enter_pkg "groff"
+
+PAGE=A4 ./configure --prefix=/usr
+check_error "configure groff"
+
+make
+check_error "make groff"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make  check
+fi
+
+make install
+check_error "make install groff"
+
+rm_pkg "groff"
+}
+
+#------------------------------------------------------------------------------
+# GRUB-2.12 
+#------------------------------------------------------------------------------
+
+install_grub() {
+
+extr_enter_pkg "grub"
+
+unset {C,CPP,CXX,LD}FLAGS
+
+echo depends bli part_gpt > grub-core/extra_deps.lst
+
+./configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --disable-efiemu \
+    --disable-werror
+
+check_error "configure grub"
+make
+check_error "make grub"
+make install
+check_error "make install grub"
+mv -v /etc/bash_completion.d/grub /usr/share/bash-completion/completions
+
+rm_pkg "grub"
+}
+
+#------------------------------------------------------------------------------
+# Gzip-1.13
+#------------------------------------------------------------------------------
+
+install_gzip() {
+
+extr_enter_pkg "gzip"
+
+./configure --prefix=/usr
+check_error "configure gzip"
+
+make
+check_error "make gzip"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install gzip"
+
+rm_pkg "gzip"
+}
+
+#------------------------------------------------------------------------------
+# IPRoute2-6.10.0
+#------------------------------------------------------------------------------
+
+install_iproute2() {
+
+extr_enter_pkg "iproute2"
+
+sed -i /ARPD/d Makefile
+rm -fv man/man8/arpd.8 
+
+make NETNS_RUN_DIR=/run/netns
+check_error "make iproute2"
+make SBINDIR=/usr/sbin install
+check_error "make install iproute2"
+
+mkdir -pv /usr/share/doc/iproute2-6.10.0
+cp -v COPYING README* /usr/share/doc/iproute2-6.10.0
+
+rm_pkg "iproute2"
+}
+
+#------------------------------------------------------------------------------
+# Kbd-2.6.4
+#------------------------------------------------------------------------------
+
+install_kbd() {
+
+extr_enter_pkg "kbd"
+
+patch -Np1 -i ../kbd-2.6.4-backspace-1.patch
+
+sed -i '/RESIZECONS_PROGS=/s/yes/no/' configure
+sed -i 's/resizecons.8 //' docs/man/man8/Makefile.in
+
+./configure --prefix=/usr --disable-vlock
+check_error "configure kbd"
+
+make
+check_error "make kbd"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install kbd"
+
+cp -R -v docs/doc -T /usr/share/doc/kbd-2.6.4 
+
+rm_pkg "kbd"
+}
+
+#------------------------------------------------------------------------------
+# Libpipeline-1.5.7
+#------------------------------------------------------------------------------
+
+install_libpipeline() {
+
+extr_enter_pkg "libpipeline"
+
+./configure --prefix=/usr
+check_error "configure libpipeline"
+
+make
+check_error "make libpipeline"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install libpipeline"
+
+rm_pkg "libpipeline"
+}
+
+#------------------------------------------------------------------------------
+# Make-4.4.1 
+#------------------------------------------------------------------------------
+
+install_make() {
+
+extr_enter_pkg "make"
+
+./configure --prefix=/usr
+check_error "configure make"
+
+make
+check_error "make make"
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make check"
+fi
+
+make install
+check_error "make install make"
+
+rm_pkg "make"
+}
+
+#------------------------------------------------------------------------------
+# Patch-2.7.6
+#------------------------------------------------------------------------------
+
+install_patch() {
+
+extr_enter_pkg "patch"
+
+./configure --prefix=/usr
+check_error "configure patch"
+
+make
+check_error "make patch"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install patch"
+
+rm_pkg "patch"
+}
+
+#------------------------------------------------------------------------------
+# Tar-1.35 
+#------------------------------------------------------------------------------
+
+install_tar() {
+
+extr_enter_pkg "tar"
+
+FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr
+check_error "configure tar"
+
+make
+check_error "make tar"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install tar"
+make -C doc install-html docdir=/usr/share/doc/tar-1.35
+
+rm_pkg "tar"
+}
+
+#------------------------------------------------------------------------------
+# Texinfo-7.1 
+#------------------------------------------------------------------------------
+
+install_texinfo() {
+
+extr_enter_pkg "texinfo"
+
+./configure --prefix=/usr
+check_error "configure texinfo"
+
+make
+check_error "make texinfo"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install texinfo"
+
+make TEXMF=/usr/share/texmf install-tex
+
+pushd /usr/share/info
+    rm -v dir
+    for f in *
+        do install-info $f dir 2>/dev/null
+    done
+popd
+
+rm_pkg "texinfo"
+}
+
+#------------------------------------------------------------------------------
+# Vim-9.1.0660 
+#------------------------------------------------------------------------------
+
+install_vim() {
+
+extr_enter_pkg "vim"
+
+echo '#define SYS_VIMRC_FILE "/etc/vimrc"' >> src/feature.h
+
+./configure --prefix=/usr
+check_error "configure vim"
+
+make
+check_error "make vim"
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "TERM=xterm-256color LANG=en_US.UTF-8 make -j1 test" \
+        &> vim-test.log
+fi
+
+make install
+check_error "make install vim"
+
+ln -sv vim /usr/bin/vi
+for L in /usr/share/man/{,*/}man1/vim.1; do
+    ln -sv vim.1 $(dirname $L)/vi.1 
+done
+
+ln -sv ../vim/vim91/doc /usr/share/doc/vim-9.1.0660
+
+cat > /etc/vimrc << "EOF"
+" Begin /etc/vimrc
+
+" Ensure defaults are set before customizing settings, not after
+source $VIMRUNTIME/defaults.vim
+let skip_defaults_vim=1
+
+set nocompatible
+set backspace=2
+set mouse=
+syntax on
+if (&term == "xterm") || (&term == "putty")
+    set background=dark
+endif
+
+" End /etc/vimrc
+EOF
+
+#vim -c ':options'
+
+#set spelllang=en,ru
+#set spell 
+
+rm_pkg "vim"
+}
+
+#------------------------------------------------------------------------------
+# MarkupSafe-2.1.5
+#------------------------------------------------------------------------------
+
+install_markupsafe() {
+
+extr_enter_pkg "MarkupSafe"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD
+check_error "pip3 wheel MarkupSafe"
+pip3 install --no-index --no-user --find-links dist Markupsafe
+check_error "pip3 install MarkupSafe"
+
+rm_pkg "SarkupSafe"
+}
+
+#------------------------------------------------------------------------------
+# Jinja2-3.1.4 
+#------------------------------------------------------------------------------
+
+install_jinja() {
+
+extr_enter_pkg "jinja2"
+
+pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps $PWD
+check_error "pip3 wheel jinja"
+pip3 install --no-index --no-user --find-links dist Jinja2 
+check_error "pip3 install jinja"
+
+rm_pkg "jinja2"
+}
+
+#------------------------------------------------------------------------------
+# Udev from Systemd-256.4
+#------------------------------------------------------------------------------
+
+install_udev() {
+
+extr_enter_pkg "systemd"
+
+sed -i -e 's/GROUP="render"/GROUP="video"/' \
+    -e 's/GROUP="sgx", //' rules.d/50-udev-default.rules.in
+
+sed '/systemd-sysctl/s/^/#/' -i rules.d/99-systemd.rules.in
+
+sed '/NETWORK_DIRS/s/systemd/udev/' -i src/basic/path-lookup.h
+
+mkdir -p build && cd build
+
+meson setup .. \
+    --prefix=/usr \
+    --buildtype=release \
+    -D mode=release \
+    -D dev-kvm-mode=0660 \
+    -D link-udev-shared=false \
+    -D logind=false \
+    -D vconsole=false
+check_error "meson setup udev"
+
+export udev_helpers=$(grep "'name' :" ../src/udev/meson.build | \
+    awk '{print $3}' | tr -d ",'" | grep -v 'udevadm')
+
+ninja udevadm systemd-hwdb \
+    $(ninja -n | grep -Eo '(src/(lib)?udev|rules.d|hwdb.d)/[^ ]*') \
+    $(realpath libudev.so --relative-to .) \
+    $udev_helpers
+check_error "ninja udevadm systemd-hwdb"
+
+install -vm755 -d {/usr/lib,/etc}/udev/{hwdb.d,rules.d,network}
+install -vm755 -d /usr/{lib,share}/pkgconfig
+install -vm755 udevadm /usr/bin/
+install -vm755 systemd-hwdb /usr/bin/udev-hwdb
+ln -svfn ../bin/udevadm /usr/sbin/udevd
+cp -av libudev.so{,*[0-9]} /usr/lib/
+install -vm644 ../src/libudev/libudev.h /usr/include/
+install -vm644 src/libudev/*.pc /usr/lib/pkgconfig/
+install -vm644 src/udev/*.pc /usr/share/pkgconfig/
+install -vm644 ../src/udev/udev.conf /etc/udev/
+install -vm644 rules.d/* ../rules.d/README /usr/lib/udev/rules.d/
+install -vm644 $(find ../rules.d/*.rules \
+    -not -name '*power-switch*') /usr/lib/udev/rules.d/
+install -vm644 hwdb.d/* ../hwdb.d/{*.hwdb,README} /usr/lib/udev/hwdb.d/
+install -vm755 $udev_helpers /usr/lib/udev
+install -vm644 ../network/99-default.link /usr/lib/udev/network
+
+tar -xvf ../../udev-lfs-20230818.tar.xz 
+make -f udev-lfs-20230818/Makefile.lfs install
+
+tar -xf ../../Systemd-man-pages-256.4.tar.xz \
+    --no-same-owner --strip-components=1 \
+    -C /usr/share/man --wildcards '*/udev*' '*/libudev*' \
+    '*/systemd.link.5' \
+    '*/systemd-'{hwdb,udevd.service}.8
+
+sed 's|systemd/network|udev/network|' \
+    /usr/share/man/man5/systemd.link.5 \
+    > /usr/share/man/man5/udev.link.5
+
+sed 's/systemd\(\\\?-\)/udev\1/' /usr/share/man/man8/systemd-hwdb.8 \
+    > /usr/share/man/man8/udev-hwdb.8
+
+sed 's|lib.*udevd|sbin/udevd|' \
+    /usr/share/man/man8/systemd-udevd.service.8 \
+    > /usr/share/man/man8/udevd.8
+
+rm /usr/share/man/man*/systemd*
+
+unset udev_helpers
+
+udev-hwdb update
+
+rm_pkg "systemd"
+}
+
+#------------------------------------------------------------------------------
+# Man-DB-2.12.1
+#------------------------------------------------------------------------------
+
+install_man_db() {
+
+extr_enter_pkg "man-db"
+
+./configure --prefix=/usr \
+    --docdir=/usr/share/doc/man-db-2.12.1 \
+    --sysconfdir=/etc \
+    --disable-setuid \
+    --enable-cache-owner=bin \
+    --with-browser=/usr/bin/lynx \
+    --with-vgrind=/usr/bin/vgrind \
+    --with-grap=/usr/bin/grap \
+    --with-systemdtmpfilesdir= \
+    --with-systemdsystemunitdir=
+
+check_error "configure man-db"
+make
+check_error "make man-db"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install man-db"
+
+rm_pkg "man-db"
+}
+
+#------------------------------------------------------------------------------
+# Procps-ng-4.0.4
+#------------------------------------------------------------------------------
+
+install_procps_ng() {
+
+extr_enter_pkg "procps-ng"
+
+./configure --prefix=/usr \
+    --docdir=/usr/share/doc/procps-ng-4.0.4 \
+    --disable-static \
+    --disable-kill
+
+check_error "configure procps-bg"
+make
+check_error "make procps-bg"
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "PATH=$PATH make check"
+fi
+
+make install
+check_error "make install procps-bg"
+
+rm_pkg "procps-ng"
+}
+
+#------------------------------------------------------------------------------
+# Util-linux-2.40.2
+#------------------------------------------------------------------------------
+
+install_util_linux() {
+
+extr_enter_pkg "util-linux"
+
+./configure --bindir=/usr/bin \
+    --libdir=/usr/lib \
+    --runstatedir=/run \
+    --sbindir=/usr/sbin \
+    --disable-chfn-chsh \
+    --disable-login \
+    --disable-nologin \
+    --disable-su \
+    --disable-setpriv \
+    --disable-runuser \
+    --disable-pylibmount \
+    --disable-liblastlog2 \
+    --disable-static \
+    --without-python \
+    --without-systemd \
+    --without-systemdsystemunitdir \
+    ADJTIME_PATH=/var/lib/hwclock/adjtime \
+    --docdir=/usr/share/doc/util-linux-2.40.2
+
+check_error "configure util-linux"
+make
+check_error "make util-linux"
+
+touch /etc/fstab
+
+chown -R tester .
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    su tester -c "make -k check"
+fi
+
+make install
+check_error "make install util-linux"
+
+rm_pkg "util-linux"
+}
+
+#------------------------------------------------------------------------------
+# E2fsprogs-1.47.1
+#------------------------------------------------------------------------------
+
+install_e2fsprogs() {
+
+extr_enter_pkg "e2fsprogs"
+
+mkdir -v build && cd build
+
+../configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-elf-shlibs \
+    --disable-libblkid \
+    --disable-libuuid \
+    --disable-uuidd \
+    --disable-fsck
+
+check_error "configure e2fsprogs"
+make
+check_error "make e2fsprogs"
+
+if [ "${DO_TESTS}" == "Y" ]; then
+    make check
+fi
+
+make install
+check_error "make install e2fsprogs"
+
+rm -fv /usr/lib/{libcom_err,libe2p,libext2fs,libss}.a
+
+gunzip -v /usr/share/info/libext2fs.info.gz
+install-info --dir-file=/usr/share/info/dir /usr/share/info/libext2fs.info
+
+makeinfo -o doc/com_err.info ../lib/et/com_err.texinfo
+install -v -m644 doc/com_err.info /usr/share/info
+install-info --dir-file=/usr/share/info/dir /usr/share/info/com_err.info 
+
+sed 's/metadata_csum_seed,//' -i /etc/mke2fs.conf 
+
+rm_pkg "e2fsprogs"
+}
+
+#------------------------------------------------------------------------------
+# Sysklogd-2.6.1
+#------------------------------------------------------------------------------
+
+install_sysklogd() {
+
+extr_enter_pkg "sysklogd"
+
+./configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --runstatedir=/run \
+    --without-logger
+
+check_error "configure sysklogd"
+
+make
+check_error "make sysklogd"
+make install
+check_error "make install sysklogd"
+
+cat > /etc/syslog.conf << "EOF"
+# Begin /etc/syslog.conf
+
+auth,authpriv.* -/var/log/auth.log
+*.*;auth,authpriv.none -/var/log/sys.log
+daemon.* -/var/log/daemon.log
+kern.* -/var/log/kern.log
+mail.* -/var/log/mail.log
+user.* -/var/log/user.log
+*.emerg *
+
+# Do not open any internet ports.
+secure_mode 2
+
+# End /etc/syslog.conf
+EOF
+
+rm_pkg "sysklogd"
+}
+
+#------------------------------------------------------------------------------
+# SysVinit-3.10 
+#------------------------------------------------------------------------------
+
+install_sysvinit() {
+
+extr_enter_pkg "sysvinit"
+
+patch -Np1 -i ../sysvinit-3.10-consolidated-1.patch
+
+make
+check_error "make sysvinit"
+make install
+check_error "make install sysvinit"
+
+rm_pkg "sysvinit"
+}
+
+#STRIPPING (OPTIONAL)
+
+#------------------------------------------------------------------------------
+
+install_man_pages    # 0.1 SBU
+install_iana_etc     # less than 0.1 SBU
+install_glibc        # 12 SBU
+install_zlib         # less than 0.1 SBU
+install_bzip2        # less than 0.1 SBU
+install_xz           # 0.1 SBU
+install_lz4          # 0.1 SBU
+install_zstd         # 0.4 SBU
+install_file         # less than 0.1 SBU
+install_readline     # less than 0.1 SBU
+install_m4           # 0.3 SBU
+install_bc           # less than 0.1 SBU
+install_flex         # 0.1 SBU
+install_tcl          # 3.2 SBU
+install_expect       # 0.2 SBU
+install_dejagnu      # less than 0.1 SBU
+install_pkgconf      # less than 0.1 SBU
+install_binutils     # 2 SBU
+install_gmp          # 0.3 SBU
+install_mpfr         # 272s - 02SBU
+install_mpc          # 228s - 0.1SBU
+install_attr         # 6.3s - less than 0.1 SBU
+install_acl          # 11s - less than 0.1 SBU
+install_libcap       # 48s - less than 0.1 SBU
+install_libxcrypt    # 151 - 0.1 SBU  
+install_shadow       # 500s - 0.1 SBU
+install_gcc          # 9820s - without tests
+install_ncurses      # 478s - 0.2 SBU
+install_sed          # 453s - 0.3 SBU
+install_psmisc       # 67s - less than 0.1 SBU
+install_gettext      # 541s - 1.6 SBU
+install_bison        # 6289 - 2.2 SBU
+install_grep         # 519s - 0.4 SBU
+install_bash         # 35115s - 1.4 SBU
+install_libtool      # 955s - 0.8 SBU
+install_gdbm         # 232s - less than 0.1 SBU
+install_gperf        # 38s - less than 0.1 SBU
+install_expat        # 93s - 0.1 SBU
+install_inetutils    # 418s - 0.2 SBU
+install_less         # 127s - less than 0.1 SBU
+install_perl         # 777s - 1.4 SBU
+install_xml_parser   # 3 s - less than 0.1 SBU
+install_intltool     # 4s - less than 0.1 SBU
+install_autoconf     # 8459s - less than 0.1 SBU - 1.8 SBU with tests
+install_automake     # 2.4s (no test) - less than 0.1 SBU - 1.1 SBU with tests
+install_openssl      # 1835s - 1.7 SBU
+install_kmod         # 99s - less than 0.1 SBU
+install_libelf       # 2342s  - 0.3 SBU
+install_libffi       # 715s - 1.7 SBU
+install_python       # 6595s - 2.2 SBU
+install_flit_core    # 4s - less than 0.1 SBU
+install_wheel        # 30s - less than 0.1 SBU
+install_setuptools   # 16s - less than 0.1 SBU
+install_ninja        # 140s - 0.2 SBU
+install_meson        # 34s - less than 0.1 SBU
+install_coreutils    # 3306s - 1.1 SBU
+install_check        # 198s (no tests)- 0.1 SBU (about 2.1 SBU with tests)
+install_diffutils    # 329s - 0.3 SBU
+install_gawk         # 239s - 0.2 SBU
+install_findutils    # 863s - 0.7 SBU
+install_groff        # 421s - 0.2 SBU
+install_grub         # 1036s - 0.3 SBU
+install_gzip         # 193s - 0.3 SBU
+install_iproute2     # 32s - 0.1 SBU
+install_kbd          # 181s - 0.1 SBU
+install_libpipeline  # 91s - 0.1 SBU
+install_make         # 159s - 0.7 SBU
+install_patch        # 95s - 0.2 SBU
+install_tar          # 2597s - 0.7 SBU
+install_texinfo      # 424s - 0.3 SBU
+install_vim          # 2642s - 2.9 SBU
+install_markupsafe   # 13s - less than 0.1 SBU
+install_jinja        # 5s - less than 0.1 SBU
+install_udev         # 600s - 0.2 SBU
+install_man_db       # 584s - 0.3 SBU
+install_procps_ng    # 167s - 0.1 SBU
+install_util_linux   # 813s - 0.5 SBU
+install_e2fsprogs    # 635s (no tests) 3650s (brokne the mounting point) - 2.4 SBU on a spinning disk, 0.5 SBU on an SSD
+install_sysklogd     # 31s - less than 0.1 SBU
+install_sysvinit     # 80s with cleanup - less than 0.1 SBU
+
+#------------------------------------------------------------------------------
+
+#CLEANING UP
+echo "[INFO] Cleaning up!"
+rm -rf /tmp/{*,.*} /root/*
+find /usr/lib /usr/libexec -name \*.la -delete
+find /usr -depth -name $(uname -m)-lfs-linux-gnu\* | xargs rm -rf
+userdel -r tester
+
+echo "[INFO] Basic system software installed!"

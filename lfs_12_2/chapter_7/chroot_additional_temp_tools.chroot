@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# login, agetty, and init, log files
+touch /var/log/{btmp,lastlog,faillog,wtmp}
+chgrp -v utmp /var/log/lastlog
+chmod -v 664 /var/log/lastlog
+chmod -v 600 /var/log/btmp
+
+source /root/utils.sh
+
+#------------------------------------------------------------------------------
+# Gettext-0.22.5
+#------------------------------------------------------------------------------
+
+install_gettext_tmp() {
+
+extr_enter_pkg "gettext"
+
+./configure --disable-shared
+check_error "configure gettext_tmp"
+
+make
+check_error "make gettext_tmp"
+cp -v gettext-tools/src/{msgfmt,msgmerge,xgettext} /usr/bin
+
+rm_pkg "gettext"
+}
+
+#------------------------------------------------------------------------------
+# Bison-3.8.2
+#------------------------------------------------------------------------------
+
+install_bison_tmp() {
+
+extr_enter_pkg "bison"
+
+./configure --prefix=/usr \
+    --docdir=/usr/share/doc/bison-3.8.2
+
+check_error "configure bison_tmp"
+
+make
+check_error "make bison_tmp"
+make install
+check_error "make install bison_tmp"
+
+rm_pkg "bison"
+}
+
+#------------------------------------------------------------------------------
+# Perl-5.40.0
+#------------------------------------------------------------------------------
+
+install_perl_tmp() {
+
+extr_enter_pkg "perl"
+
+sh Configure -des \
+    -D prefix=/usr \
+    -D vendorprefix=/usr \
+    -D useshrplib \
+    -D privlib=/usr/lib/perl5/5.40/core_perl \
+    -D archlib=/usr/lib/perl5/5.40/core_perl \
+    -D sitelib=/usr/lib/perl5/5.40/site_perl \
+    -D sitearch=/usr/lib/perl5/5.40/site_perl \
+    -D vendorlib=/usr/lib/perl5/5.40/vendor_perl \
+    -D vendorarch=/usr/lib/perl5/5.40/vendor_perl
+
+check_error "configure perl_tmp"
+
+make
+check_error "make perl_tmp"
+make install
+check_error "make install perl_tmp"
+
+rm_pkg "perl"
+}
+
+#------------------------------------------------------------------------------
+# Python-3.12.5
+#------------------------------------------------------------------------------
+
+install_python_tmp() {
+
+extr_enter_pkg "Python"
+
+./configure --prefix=/usr \
+    --enable-shared \
+    --without-ensurepip
+
+check_error "configure python_tmp"
+
+make
+check_error "make python_tmp"
+make install
+check_error "make install python_tmp"
+
+rm_pkg "Python"
+}
+
+#------------------------------------------------------------------------------
+# Texinfo-7.1
+#------------------------------------------------------------------------------
+
+install_texinfo_tmp() {
+
+extr_enter_pkg "texinfo"
+
+./configure --prefix=/usr
+
+check_error "configure texinfo_tmp"
+
+make
+check_error "make texinfo_tmp"
+make install
+check_error "make install texinfo_tmp"
+
+rm_pkg "texinfo"
+}
+
+#------------------------------------------------------------------------------
+# Util-linux-2.40.2
+#------------------------------------------------------------------------------
+
+install_util_linux_tmp() {
+
+extr_enter_pkg "util-linux"
+
+mkdir -pv /var/lib/hwclock
+
+./configure --libdir=/usr/lib \
+    --runstatedir=/run \
+    --disable-chfn-chsh \
+    --disable-login \
+    --disable-nologin \
+    --disable-su \
+    --disable-setpriv \
+    --disable-runuser \
+    --disable-pylibmount \
+    --disable-static \
+    --disable-liblastlog2 \
+    --without-python \
+    ADJTIME_PATH=/var/lib/hwclock/adjtime \
+    --docdir=/usr/share/doc/util-linux-2.40.2
+
+check_error "configure util_linux_tmp"
+
+#uuidd
+make
+check_error "make util_linux_tmp"
+make install
+check_error "make install util_linux_tmp"
+
+rm_pkg "util-linux"
+}
+
+install_gettext_tmp
+install_bison_tmp
+install_perl_tmp
+install_python_tmp
+install_texinfo_tmp
+install_util_linux_tmp
+
+# CLEAN UP
+rm -rf /usr/share/{info,man,doc}/*
+find /usr/{lib,libexec} -name \*.la -delete
+rm -rf /tools
+
+echo "[INFO] chroot additional tools installed!"

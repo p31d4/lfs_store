@@ -1,0 +1,36 @@
+#!/bin/bash
+
+#------------------------------------------------------------------------------
+# CHAPTER 11
+#------------------------------------------------------------------------------
+
+echo 12.2 > /etc/lfs-release
+
+cat > /etc/lsb-release << "EOF"
+DISTRIB_ID="Linux From Scratch"
+DISTRIB_RELEASE="12.2"
+DISTRIB_CODENAME="lfs"
+DISTRIB_DESCRIPTION="Linux From Scratch"
+EOF
+
+cat > /etc/os-release << "EOF"
+NAME="Linux From Scratch"
+VERSION="12.2"
+ID=lfs
+PRETTY_NAME="Linux From Scratch 12.2"
+VERSION_CODENAME="lfs"
+HOME_URL="https://www.linuxfromscratch.org/lfs/"
+EOF
+
+# REVIEW
+# /etc/bashrc
+# /etc/dircolors
+# /etc/fstab
+# /etc/hosts
+# /etc/inputrc
+# /etc/profile
+# /etc/resolv.conf
+# /etc/vimrc
+# /root/.bash_profile
+# /root/.bashrc
+# /etc/sysconfig/ifconfig.eth0
